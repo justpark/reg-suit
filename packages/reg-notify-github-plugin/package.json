@@ -1,5 +1,5 @@
 {
-  "name": "reg-notify-github-plugin",
+  "name": "@justpark/reg-notify-github-plugin",
   "version": "0.14.4",
   "description": "Notify reg-suit result to GitHub repository",
   "regSuitPlugin": {
@@ -19,7 +19,7 @@
     "name": "Quramy",
     "email": "yosuke.kurami@gmail.com"
   },
-  "repository": "git+https://github.com/reg-viz/reg-suit.git",
+  "repository": "https://github.com/justpark/reg-suit",
   "license": "MIT",
   "devDependencies": {
     "@types/jest": "29.5.12",

@@ -1,8 +1,5 @@
-import path from "path";
-import { Repository } from "tiny-commit-walker";
 import { inflateRawSync } from "zlib";
-import { getGhAppInfo, BaseEventBody, CommentToPrBody, UpdateStatusBody } from "reg-gh-app-interface";
-import { fsUtil } from "reg-suit-util";
+import { getGhAppInfo, BaseEventBody, UpdateStatusBody } from "reg-gh-app-interface";
 import { NotifierPlugin, NotifyParams, PluginCreateOptions, PluginLogger } from "reg-suit-interface";
 import { fetch } from "undici";
 
@@ -59,7 +56,6 @@ export class GitHubNotifierPlugin implements NotifierPlugin<GitHubPluginOption> 
   _shortDescription!: boolean;
 
   _apiPrefix!: string;
-  _repo!: Repository;
 
   _decodeClientId(clientId: string) {
     const tmp = inflateRawSync(new Buffer(clientId, "base64")).toString().split("/");
@@ -84,28 +80,24 @@ export class GitHubNotifierPlugin implements NotifierPlugin<GitHubPluginOption> 
     this._setCommitStatus = config.options.setCommitStatus !== false;
     this._shortDescription = config.options.shortDescription ?? false;
     this._apiPrefix = config.options.customEndpoint || getGhAppInfo().endpoint;
-    this._repo = new Repository(path.join(fsUtil.prjRootDir(".git"), ".git"));
   }
 
   async notify(params: NotifyParams): Promise<any> {
-    const head = this._repo.readHeadSync();
-    const { failedItems, newItems, deletedItems, passedItems } = params.comparisonResult;
+    const {
+      // passedItems,
+      failedItems,
+      newItems,
+      deletedItems,
+    } = params.comparisonResult;
     const failedItemsCount = failedItems.length;
     const newItemsCount = newItems.length;
     const deletedItemsCount = deletedItems.length;
-    const passedItemsCount = passedItems.length;
+    // const passedItemsCount = passedItems.length;
     const state = failedItemsCount + newItemsCount + deletedItemsCount === 0 ? "success" : "failure";
     const description = state === "success" ? "Regression testing passed" : "Regression testing failed";
-    let sha1: string;
 
-    if (head.branch) {
-      sha1 = head.branch.commit.hash;
-    } else if (head.commit) {
-      sha1 = head.commit.hash;
-    } else {
-      this._logger.error("Can't detect HEAD branch or commit.");
-      return Promise.resolve();
-    }
+    // @ts-ignore
+    const sha1: string = process.env.COMMIT_INFO_SHA;
 
     const updateStatusBody: UpdateStatusBody = {
       ...this._apiOpt,
@@ -114,15 +106,6 @@ export class GitHubNotifierPlugin implements NotifierPlugin<GitHubPluginOption> 
       state,
     };
     if (params.reportUrl) updateStatusBody.reportUrl = params.reportUrl;
-    if (this._prComment) {
-      updateStatusBody.metadata = {
-        failedItemsCount,
-        newItemsCount,
-        deletedItemsCount,
-        passedItemsCount,
-        shortDescription: this._shortDescription,
-      };
-    }
 
     const reqs: FetchRequest[] = [];
 
@@ -137,32 +120,6 @@ export class GitHubNotifierPlugin implements NotifierPlugin<GitHubPluginOption> 
       reqs.push(statusReq);
     }
 
-    if (this._prComment) {
-      if (head.type === "branch" && head.branch) {
-        const prCommentBody: CommentToPrBody = {
-          ...this._apiOpt,
-          behavior: this._behavior,
-          branchName: head.branch.name,
-          headOid: sha1,
-          failedItemsCount,
-          newItemsCount,
-          deletedItemsCount,
-          passedItemsCount,
-          shortDescription: this._shortDescription,
-        };
-        if (params.reportUrl) prCommentBody.reportUrl = params.reportUrl;
-        const commentReq: FetchRequest = {
-          url: `${this._apiPrefix}/api/comment-to-pr`,
-          method: "POST",
-          body: prCommentBody,
-        };
-        this._logger.info(`Comment to PR associated with ${this._logger.colors.green(prCommentBody.branchName)} .`);
-        this._logger.verbose("PR comment: ", commentReq);
-        reqs.push(commentReq);
-      } else {
-        this._logger.warn(`HEAD is not attached into any branches.`);
-      }
-    }
     if (this._noEmit) {
       return Promise.resolve();
     }
